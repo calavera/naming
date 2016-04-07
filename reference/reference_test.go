@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/distribution/digest"
+	"github.com/docker/naming/digest"
 )
 
 func TestReferenceParse(t *testing.T) {

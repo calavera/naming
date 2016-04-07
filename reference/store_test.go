@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/image"
+	"github.com/docker/naming/digest"
 )
 
 var (
-	saveLoadTestCases = map[string]image.ID{
+	saveLoadTestCases = map[string]digest.Digest{
 		"registry:5000/foobar:HEAD":                                                        "sha256:470022b8af682154f57a2163d030eb369549549cba00edc69e1b99b46bb924d6",
 		"registry:5000/foobar:alternate":                                                   "sha256:ae300ebc4a4f00693702cfb0a5e0b7bc527b353828dc86ad09fb95c8a681b793",
 		"registry:5000/foobar:latest":                                                      "sha256:6153498b9ac00968d71b66cca4eac37e990b5f9eb50c26877eb8799c8847451b",
@@ -45,7 +45,7 @@ func TestLoad(t *testing.T) {
 	}
 
 	for refStr, expectedID := range saveLoadTestCases {
-		ref, err := ParseNamed(refStr)
+		ref, err := ParseRemoteNamed(refStr)
 		if err != nil {
 			t.Fatalf("failed to parse reference: %v", err)
 		}
@@ -74,11 +74,11 @@ func TestSave(t *testing.T) {
 	}
 
 	for refStr, id := range saveLoadTestCases {
-		ref, err := ParseNamed(refStr)
+		ref, err := ParseRemoteNamed(refStr)
 		if err != nil {
 			t.Fatalf("failed to parse reference: %v", err)
 		}
-		if canonical, ok := ref.(Canonical); ok {
+		if canonical, ok := ref.(RemoteCanonical); ok {
 			err = store.AddDigest(canonical, id, false)
 			if err != nil {
 				t.Fatalf("could not add digest reference %s: %v", refStr, err)
@@ -115,12 +115,12 @@ func TestAddDeleteGet(t *testing.T) {
 		t.Fatalf("error creating tag store: %v", err)
 	}
 
-	testImageID1 := image.ID("sha256:9655aef5fd742a1b4e1b7b163aa9f1c76c186304bf39102283d80927c916ca9c")
-	testImageID2 := image.ID("sha256:9655aef5fd742a1b4e1b7b163aa9f1c76c186304bf39102283d80927c916ca9d")
-	testImageID3 := image.ID("sha256:9655aef5fd742a1b4e1b7b163aa9f1c76c186304bf39102283d80927c916ca9e")
+	testImageID1 := digest.Digest("sha256:9655aef5fd742a1b4e1b7b163aa9f1c76c186304bf39102283d80927c916ca9c")
+	testImageID2 := digest.Digest("sha256:9655aef5fd742a1b4e1b7b163aa9f1c76c186304bf39102283d80927c916ca9d")
+	testImageID3 := digest.Digest("sha256:9655aef5fd742a1b4e1b7b163aa9f1c76c186304bf39102283d80927c916ca9e")
 
 	// Try adding a reference with no tag or digest
-	nameOnly, err := WithName("username/repo")
+	nameOnly, err := WithRemoteName("username/repo")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestAddDeleteGet(t *testing.T) {
 	}
 
 	// Add a few references
-	ref1, err := ParseNamed("username/repo1:latest")
+	ref1, err := ParseRemoteNamed("username/repo1:latest")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestAddDeleteGet(t *testing.T) {
 		t.Fatalf("error adding to store: %v", err)
 	}
 
-	ref2, err := ParseNamed("username/repo1:old")
+	ref2, err := ParseRemoteNamed("username/repo1:old")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAddDeleteGet(t *testing.T) {
 		t.Fatalf("error adding to store: %v", err)
 	}
 
-	ref3, err := ParseNamed("username/repo1:alias")
+	ref3, err := ParseRemoteNamed("username/repo1:alias")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestAddDeleteGet(t *testing.T) {
 		t.Fatalf("error adding to store: %v", err)
 	}
 
-	ref4, err := ParseNamed("username/repo2:latest")
+	ref4, err := ParseRemoteNamed("username/repo2:latest")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -161,11 +161,11 @@ func TestAddDeleteGet(t *testing.T) {
 		t.Fatalf("error adding to store: %v", err)
 	}
 
-	ref5, err := ParseNamed("username/repo3@sha256:58153dfb11794fad694460162bf0cb0a4fa710cfa3f60979c177d920813e267c")
+	ref5, err := ParseRemoteNamed("username/repo3@sha256:58153dfb11794fad694460162bf0cb0a4fa710cfa3f60979c177d920813e267c")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
-	if err = store.AddDigest(ref5.(Canonical), testImageID2, false); err != nil {
+	if err = store.AddDigest(ref5.(RemoteCanonical), testImageID2, false); err != nil {
 		t.Fatalf("error adding to store: %v", err)
 	}
 
@@ -228,7 +228,7 @@ func TestAddDeleteGet(t *testing.T) {
 	}
 
 	// Get should return ErrDoesNotExist for a nonexistent repo
-	nonExistRepo, err := ParseNamed("username/nonexistrepo:latest")
+	nonExistRepo, err := ParseRemoteNamed("username/nonexistrepo:latest")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestAddDeleteGet(t *testing.T) {
 	}
 
 	// Get should return ErrDoesNotExist for a nonexistent tag
-	nonExistTag, err := ParseNamed("username/repo1:nonexist")
+	nonExistTag, err := ParseRemoteNamed("username/repo1:nonexist")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestAddDeleteGet(t *testing.T) {
 	}
 
 	// Check ReferencesByName
-	repoName, err := WithName("username/repo1")
+	repoName, err := WithRemoteName("username/repo1")
 	if err != nil {
 		t.Fatalf("could not parse reference: %v", err)
 	}
@@ -331,10 +331,10 @@ func TestInvalidTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating tag store: %v", err)
 	}
-	id := image.ID("sha256:470022b8af682154f57a2163d030eb369549549cba00edc69e1b99b46bb924d6")
+	id := digest.Digest("sha256:470022b8af682154f57a2163d030eb369549549cba00edc69e1b99b46bb924d6")
 
 	// sha256 as repo name
-	ref, err := ParseNamed("sha256:abc")
+	ref, err := ParseRemoteNamed("sha256:abc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestInvalidTags(t *testing.T) {
 	}
 
 	// setting digest as a tag
-	ref, err = ParseNamed("registry@sha256:367eb40fd0330a7e464777121e39d2f5b3e8e23a1e159342e53ab05c9e4d94e6")
+	ref, err = ParseRemoteNamed("registry@sha256:367eb40fd0330a7e464777121e39d2f5b3e8e23a1e159342e53ab05c9e4d94e6")
 	if err != nil {
 		t.Fatal(err)
 	}

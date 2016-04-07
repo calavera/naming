@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/docker/distribution/digest"
-	distreference "github.com/docker/distribution/reference"
-	"github.com/docker/docker/image/v1"
+	"github.com/docker/naming/digest"
 )
 
 const (
@@ -21,12 +19,9 @@ const (
 	DefaultRepoPrefix = "library/"
 )
 
-// Named is an object with a full name
-type Named interface {
-	// Name returns normalized repository name, like "ubuntu".
-	Name() string
-	// String returns full reference, like "ubuntu@sha256:abcdef..."
-	String() string
+// RemoteNamed is an object with a full name
+type RemoteNamed interface {
+	Named
 	// FullName returns full repository name with hostname, like "docker.io/library/ubuntu"
 	FullName() string
 	// Hostname returns hostname for the reference, like "docker.io"
@@ -35,44 +30,44 @@ type Named interface {
 	RemoteName() string
 }
 
-// NamedTagged is an object including a name and tag.
-type NamedTagged interface {
-	Named
+// RemoteTagged is an object including a name and tag.
+type RemoteTagged interface {
+	RemoteNamed
 	Tag() string
 }
 
-// Canonical reference is an object with a fully unique
+// RemoteCanonical reference is an object with a fully unique
 // name including a name with hostname and digest
-type Canonical interface {
-	Named
+type RemoteCanonical interface {
+	RemoteNamed
 	Digest() digest.Digest
 }
 
-// ParseNamed parses s and returns a syntactically valid reference implementing
-// the Named interface. The reference must have a name, otherwise an error is
+// ParseRemoteNamed parses s and returns a syntactically valid reference implementing
+// the RemoteNamed interface. The reference must have a name, otherwise an error is
 // returned.
 // If an error was encountered it is returned, along with a nil Reference.
-func ParseNamed(s string) (Named, error) {
-	named, err := distreference.ParseNamed(s)
+func ParseRemoteNamed(s string) (RemoteNamed, error) {
+	named, err := ParseNamed(s)
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing reference: %q is not a valid repository/tag", s)
 	}
-	r, err := WithName(named.Name())
+	r, err := WithRemoteName(named.Name())
 	if err != nil {
 		return nil, err
 	}
-	if canonical, isCanonical := named.(distreference.Canonical); isCanonical {
-		return WithDigest(r, canonical.Digest())
+	if canonical, isCanonical := named.(Canonical); isCanonical {
+		return WithRemoteDigest(r, canonical.Digest())
 	}
-	if tagged, isTagged := named.(distreference.NamedTagged); isTagged {
-		return WithTag(r, tagged.Tag())
+	if tagged, isTagged := named.(NamedTagged); isTagged {
+		return WithRemoteTag(r, tagged.Tag())
 	}
 	return r, nil
 }
 
-// WithName returns a named object representing the given string. If the input
+// WithRemoteName returns a named object representing the given string. If the input
 // is invalid ErrReferenceInvalidFormat will be returned.
-func WithName(name string) (Named, error) {
+func WithRemoteName(name string) (RemoteNamed, error) {
 	name, err := normalize(name)
 	if err != nil {
 		return nil, err
@@ -80,76 +75,76 @@ func WithName(name string) (Named, error) {
 	if err := validateName(name); err != nil {
 		return nil, err
 	}
-	r, err := distreference.WithName(name)
+	r, err := WithName(name)
 	if err != nil {
 		return nil, err
 	}
-	return &namedRef{r}, nil
+	return &remoteNamedRef{r}, nil
 }
 
-// WithTag combines the name from "name" and the tag from "tag" to form a
+// WithRemoteTag combines the name from "name" and the tag from "tag" to form a
 // reference incorporating both the name and the tag.
-func WithTag(name Named, tag string) (NamedTagged, error) {
-	r, err := distreference.WithTag(name, tag)
+func WithRemoteTag(name Named, tag string) (RemoteTagged, error) {
+	r, err := WithTag(name, tag)
 	if err != nil {
 		return nil, err
 	}
-	return &taggedRef{namedRef{r}}, nil
+	return &remoteTaggedRef{remoteNamedRef{r}}, nil
 }
 
-// WithDigest combines the name from "name" and the digest from "digest" to form
+// WithRemoteDigest combines the name from "name" and the digest from "digest" to form
 // a reference incorporating both the name and the digest.
-func WithDigest(name Named, digest digest.Digest) (Canonical, error) {
-	r, err := distreference.WithDigest(name, digest)
+func WithRemoteDigest(name Named, digest digest.Digest) (RemoteCanonical, error) {
+	r, err := WithDigest(name, digest)
 	if err != nil {
 		return nil, err
 	}
-	return &canonicalRef{namedRef{r}}, nil
+	return &remoteCanonicalRef{remoteNamedRef{r}}, nil
 }
 
-type namedRef struct {
-	distreference.Named
+type remoteNamedRef struct {
+	Named
 }
-type taggedRef struct {
-	namedRef
+type remoteTaggedRef struct {
+	remoteNamedRef
 }
-type canonicalRef struct {
-	namedRef
+type remoteCanonicalRef struct {
+	remoteNamedRef
 }
 
-func (r *namedRef) FullName() string {
+func (r *remoteNamedRef) FullName() string {
 	hostname, remoteName := splitHostname(r.Name())
 	return hostname + "/" + remoteName
 }
-func (r *namedRef) Hostname() string {
+func (r *remoteNamedRef) Hostname() string {
 	hostname, _ := splitHostname(r.Name())
 	return hostname
 }
-func (r *namedRef) RemoteName() string {
+func (r *remoteNamedRef) RemoteName() string {
 	_, remoteName := splitHostname(r.Name())
 	return remoteName
 }
-func (r *taggedRef) Tag() string {
-	return r.namedRef.Named.(distreference.NamedTagged).Tag()
+func (r *remoteTaggedRef) Tag() string {
+	return r.remoteNamedRef.Named.(NamedTagged).Tag()
 }
-func (r *canonicalRef) Digest() digest.Digest {
-	return r.namedRef.Named.(distreference.Canonical).Digest()
+func (r *remoteCanonicalRef) Digest() digest.Digest {
+	return r.remoteNamedRef.Named.(Canonical).Digest()
 }
 
-// WithDefaultTag adds a default tag to a reference if it only has a repo name.
-func WithDefaultTag(ref Named) Named {
-	if IsNameOnly(ref) {
-		ref, _ = WithTag(ref, DefaultTag)
+// WithDefaultRemoteTag adds a default tag to a reference if it only has a repo name.
+func WithDefaultRemoteTag(ref RemoteNamed) RemoteNamed {
+	if IsRemoteNameOnly(ref) {
+		ref, _ = WithRemoteTag(ref, DefaultTag)
 	}
 	return ref
 }
 
-// IsNameOnly returns true if reference only contains a repo name.
-func IsNameOnly(ref Named) bool {
-	if _, ok := ref.(NamedTagged); ok {
+// IsRemoteNameOnly returns true if reference only contains a repo name.
+func IsRemoteNameOnly(ref Named) bool {
+	if _, ok := ref.(RemoteTagged); ok {
 		return false
 	}
-	if _, ok := ref.(Canonical); ok {
+	if _, ok := ref.(RemoteCanonical); ok {
 		return false
 	}
 	return true
@@ -158,13 +153,13 @@ func IsNameOnly(ref Named) bool {
 // ParseIDOrReference parses string for a image ID or a reference. ID can be
 // without a default prefix.
 func ParseIDOrReference(idOrRef string) (digest.Digest, Named, error) {
-	if err := v1.ValidateID(idOrRef); err == nil {
+	if err := digest.ValidateHex(idOrRef); err == nil {
 		idOrRef = "sha256:" + idOrRef
 	}
 	if dgst, err := digest.ParseDigest(idOrRef); err == nil {
 		return dgst, nil, nil
 	}
-	ref, err := ParseNamed(idOrRef)
+	ref, err := ParseRemoteNamed(idOrRef)
 	return "", ref, err
 }
 
@@ -204,7 +199,7 @@ func normalize(name string) (string, error) {
 }
 
 func validateName(name string) error {
-	if err := v1.ValidateID(name); err == nil {
+	if err := digest.ValidateHex(name); err == nil {
 		return fmt.Errorf("Invalid repository name (%s), cannot specify 64-byte hexadecimal strings", name)
 	}
 	return nil

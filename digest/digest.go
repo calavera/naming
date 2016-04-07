@@ -13,6 +13,8 @@ const (
 	DigestSha256EmptyTar = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 )
 
+var validHex = regexp.MustCompile(`^([a-f0-9]{64})$`)
+
 // Digest allows simple protection of hex formatted digest strings, prefixed
 // by their algorithm. Strings of type Digest have some guarantee of being in
 // the correct format and it provides quick access to the components of a
@@ -136,4 +138,12 @@ func (d Digest) sepIndex() int {
 	}
 
 	return i
+}
+
+// ValidateHex checks whether an string is a valid digest.
+func ValidateHex(id string) error {
+	if ok := validHex.MatchString(id); !ok {
+		return fmt.Errorf("digest %q is invalid", id)
+	}
+	return nil
 }
